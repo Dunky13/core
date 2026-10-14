@@ -62,9 +62,6 @@ over, and how the engine is prefetched in a single round trip.
 
 [dev-mode.md](dev-mode.md) covers the opt-in debugging flags.
 
-[container-identity.md](container-identity.md) covers the opt-in Proxmox CTID
-bounds and MAC/IP template PoC ([offline HTML](container-identity.html)).
-
 [testing-builds.md](testing-builds.md) covers `var_testurl` — how a script under
 test asks for feedback, and what it changes.
 
@@ -84,9 +81,8 @@ an update before it starts.
 | [`core/core.func`](../core/core.func) | Colours, icons, `msg_*`, spinner, `silent()`, logging, prompts |
 | [`core/error_handler.func`](../core/error_handler.func) | `catch_errors`, the ERR trap, signal handlers, container failure artifacts |
 | [`core/dev-mode.func`](../core/dev-mode.func) | Opt-in developer flags, timing and tracing |
-| [`ui/build-ui.func`](../ui/build-ui.func) | Wizard entry point; sources the five parts below |
+| [`ui/build-ui.func`](../ui/build-ui.func) | Wizard entry point; sources the four parts below |
 | [`ui/validate.func`](../ui/validate.func) | Container ID, hostname, network and IP-range validators |
-| [`ui/identity.func`](../ui/identity.func) | Opt-in PVE CTID bounds and address templates |
 | [`ui/defaults.func`](../ui/defaults.func) | Storage selection, `.vars` files, app defaults |
 | [`ui/advanced.func`](../ui/advanced.func) | The advanced settings wizard |
 | [`ui/menu.func`](../ui/menu.func) | `start`, `install_script`, settings and diagnostics menus |

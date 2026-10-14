@@ -5,7 +5,7 @@ CORE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 if [[ $# == 0 ]]; then
   failed=0 passed=0
-  for scenario in legacy-pve legacy-incus incus-reject bounds holes local-orphan empty-cluster api-failure malformed-resources exhausted explicit-id tokens invalid-templates ipv6 defaults global-defaults precedence env-precedence save-reload wizard wizard-accept wizard-id-change wizard-clear-mac final-net0 late-collision pct-collision; do
+  for scenario in legacy-pve legacy-incus incus-reject bounds holes generic-1200 generic-3000 generic-high-id local-orphan empty-cluster api-failure malformed-resources exhausted explicit-id tokens invalid-templates ipv6 defaults global-defaults precedence env-precedence save-reload wizard wizard-accept wizard-id-change wizard-clear-mac final-net0 late-collision pct-collision; do
     if bash "$0" "$scenario"; then
       echo "PASS $scenario"
       passed=$((passed + 1))
@@ -232,6 +232,57 @@ holes)
   same 605 "$(get_valid_container_id)"
   base_settings
   same 605 "$CT_ID"
+  ;;
+generic-1200)
+  static_policy
+  var_ctid_min=1200 var_ctid_max=1299 var_vlan=42
+  RESOURCES='[{"vmid":1200,"type":"qemu","node":"other"}]'
+  same 1201 "$(get_valid_container_id)"
+  base_settings
+  same 1201 "$CT_ID"
+  same 02:00:00:00:12:01 "$MAC"
+  same 10.20.12.1/16 "$NET"
+  same 2001:db8::12:1/64 "$IPV6_ADDR"
+  (net0_capture)
+  grep -q -- 'hwaddr=02:00:00:00:12:01,ip=10.20.12.1/16,tag=42,ip6=2001:db8::12:1/64' "$TEST_DIR/pct-options"
+  ;;
+generic-3000)
+  static_policy
+  var_ctid_min=3000 var_ctid_max=3999 var_vlan=77
+  var_mac_template='02:00:00:01:{id_hi2}:{id_lo2}'
+  # Mixed remote VM/CT occupancy below a hole, with another guest above it.
+  RESOURCES=$(jq -n '[range(3000;3042) | {vmid:., type:(if . % 2 == 0 then "qemu" else "lxc" end), node:"other"}] + [{vmid:3043,type:"qemu",node:"other"}]')
+  same 3042 "$(get_valid_container_id)"
+  base_settings
+  same 3042 "$CT_ID"
+  same 02:00:00:01:30:42 "$MAC"
+  same 10.20.30.42/16 "$NET"
+  same 2001:db8::30:42/64 "$IPV6_ADDR"
+  (net0_capture)
+  grep -q -- 'hwaddr=02:00:00:01:30:42,ip=10.20.30.42/16,tag=77,ip6=2001:db8::30:42/64' "$TEST_DIR/pct-options"
+  ;;
+generic-high-id)
+  # Allocation has the PVE ID limit, independent of any MAC template's limit.
+  var_ctid_min=20012 var_ctid_max=20099
+  RESOURCES='[{"vmid":20013,"type":"lxc","node":"other"}]'
+  same 20012 "$(get_valid_container_id)"
+  base_settings
+  same 20012 "$CT_ID"
+  same '' "$MAC"
+  same dhcp "$NET"
+  same '' "${_IDENTITY_BOUND_ID:-}"
+  same 20014 "$(get_valid_container_id 20014)"
+  var_ipv6_template='2001:db8::{id_hi}:{id_lo}/64'
+  var_vlan=123
+  base_settings
+  same 20012 "$CT_ID"
+  same 2001:db8::200:12/64 "$IPV6_ADDR"
+  same '' "$MAC"
+  same dhcp "$NET"
+  (net0_capture)
+  grep -q -- 'bridge=vmbr0,ip=dhcp,tag=123,ip6=2001:db8::200:12/64' "$TEST_DIR/pct-options"
+  reject _identity_render '02:00:00:00:{id_hi2}:{id_lo2}' 20012 mac
+  grep -q 'without truncation' "$TEST_DIR/rejected"
   ;;
 empty-cluster)
   var_ctid_min=604 var_ctid_max=604
