@@ -238,7 +238,7 @@ github_api_call() {
         continue
       fi
       msg_error "GitHub API connection failed (no response)."
-      msg_error "Check your network/DNS: curl -sSL https://api.github.com/rate_limit"
+      _forge_explain_failure "api.github.com"
       return 22
       ;;
     *)
@@ -1293,6 +1293,35 @@ _forge_curl() {
   printf '%s' "${code:-000}"
 }
 
+# The fetch helpers run curl with -s and only see 000. Reproduce the failure
+# once with the message visible and say what the exit code points to.
+_forge_explain_failure() {
+  local host="${1:?host}" msg rc v4
+  msg="$(curl -sS -o /dev/null --connect-timeout 5 --max-time 15 "https://${host}/" 2>&1)"
+  rc=$?
+  msg="$(printf '%s' "$msg" | tail -n1 | sed 's/^curl: ([0-9]*) //')"
+  [[ -n "$msg" ]] && msg_error "curl: ${msg}"
+  case "$rc" in
+  0) msg_error "${host} answers now; the failure looks transient, run the script again" ;;
+  6) msg_error "${host} does not resolve here: check /etc/resolv.conf and whether a DNS filter (Pi-hole, AdGuard) blocks it" ;;
+  7 | 28)
+    v4="$(curl -4 -sS -o /dev/null --connect-timeout 5 --max-time 15 -w '%{http_code}' "https://${host}/" 2>/dev/null)" || v4="000"
+    if [[ "$v4" != "000" ]] && ip -6 addr show scope global 2>/dev/null | grep -q inet6; then
+      msg_error "IPv4 reaches ${host}, IPv6 does not: this container has an IPv6 address without a working route. Disable IPv6 for it or fix the route."
+    elif [[ "$v4" != "000" ]]; then
+      msg_error "${host} answered an IPv4 probe just now; the failure looks transient, run the script again"
+    elif ((rc == 28)); then
+      msg_error "Connection to ${host} timed out: a firewall or proxy is holding the traffic (set HTTP_PROXY if one is required)"
+    else
+      msg_error "No route to ${host}: check the gateway, firewall and proxy (HTTP_PROXY)"
+    fi
+    ;;
+  35 | 60) msg_error "TLS handshake with ${host} failed: check the clock ($(date -u '+%F %T') UTC), ca-certificates, and whether something intercepts TLS" ;;
+  56) msg_error "Connection to ${host} was reset: a filtering proxy or a regional block" ;;
+  *) msg_error "curl exit ${rc} reaching ${host}; try: curl -v https://${host}/" ;;
+  esac
+}
+
 # ------------------------------------------------------------------------------
 # _forge_http_get()
 #
@@ -1562,9 +1591,14 @@ _forge_release_json() {
 
   if [[ "$ok" != "true" ]]; then
     if [[ "$code" == "000" ]]; then
-      msg_error "Connection to ${forge} failed"
       rm -f "$raw"
-      return 7
+      if ((curl_rc == 0)); then
+        msg_error "${forge} answered, but not with JSON: a captive portal or a proxy error page is in the way"
+        return 22
+      fi
+      msg_error "Connection to ${forge} failed"
+      _forge_explain_failure "$host"
+      return "$curl_rc"
     fi
     msg_error "${forge} API returned HTTP ${code} for ${repo}"
     rm -f "$raw"

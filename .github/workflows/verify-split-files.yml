@@ -30,6 +30,7 @@ on:
       - "tests/docker-lxcfs.sh"
       - "tests/external-installer.sh"
       - "tests/forge-version-key.sh"
+      - "tests/forge-connection.sh"
       - ".github/workflows/verify-split-files.yml"
   push:
     branches: [main]
@@ -51,6 +52,7 @@ on:
       - "tests/docker-lxcfs.sh"
       - "tests/external-installer.sh"
       - "tests/forge-version-key.sh"
+      - "tests/forge-connection.sh"
       - ".github/workflows/verify-split-files.yml"
   workflow_dispatch:
 
@@ -95,6 +97,9 @@ jobs:
 
       - name: Forge version key regression tests
         run: bash tests/forge-version-key.sh
+
+      - name: Forge connection diagnosis tests
+        run: bash tests/forge-connection.sh
 
       - name: Prefetch lists cover every engine file
         run: |
