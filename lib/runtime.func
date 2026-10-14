@@ -1437,6 +1437,11 @@ setup_nodejs() {
   if [[ -n "$CURRENT_NODE_VERSION" && "$CURRENT_NODE_VERSION" == "$NODE_VERSION" ]]; then
     msg_info "Update Node.js $NODE_VERSION"
 
+    # NodeSource re-signed its key in 2026-01. apt on Debian 13 rejects the old
+    # SHA1-only keyring, keeps the stale index, and the upgrade below does nothing.
+    download_gpg_key "https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key" "/etc/apt/keyrings/nodesource.gpg" "dearmor" ||
+      msg_warn "Could not refresh the NodeSource signing key"
+
     ensure_apt_working || return 100
 
     # Upgrade to the latest minor/patch release from NodeSource

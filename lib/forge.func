@@ -1481,6 +1481,9 @@ _forge_release_json() {
   local forge="${1:?forge}" repo="${2:?repo}" version="${3:-latest}"
   local tag_prefix="${4:-}" out="${5:?outfile}"
 
+  # The install path arrives here without check_for_release; a Proxmox host has no jq.
+  ensure_dependencies jq || return 100
+
   local base repo_path list one
   base="$(_forge_descriptor "$forge" base)"
   repo_path="$repo"
@@ -1591,11 +1594,15 @@ _forge_release_json() {
 
   if [[ "$ok" != "true" ]]; then
     if [[ "$code" == "000" ]]; then
-      rm -f "$raw"
       if ((curl_rc == 0)); then
+        local excerpt
+        excerpt="$(head -c 160 "$raw" | tr -cd '[:print:]')"
+        rm -f "$raw"
         msg_error "${forge} answered, but not with JSON: a captive portal or a proxy error page is in the way"
+        msg_error "The response starts with: ${excerpt:-(empty)}"
         return 22
       fi
+      rm -f "$raw"
       msg_error "Connection to ${forge} failed"
       _forge_explain_failure "$host"
       return "$curl_rc"
