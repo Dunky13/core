@@ -1240,7 +1240,7 @@ incus_run_install_script_with_recovery() {
   if [[ $install_exit_code -eq 1 && -f "$combined_log" ]]; then
     grep -qiE 'E: Unable to|broken packages|unmet dependencies|dpkg --configure' "$combined_log" && is_apt_issue=true
     grep -qiE 'Cannot allocate memory|Out of memory|oom-killer|JavaScript heap' "$combined_log" && is_oom=true
-    grep -qiE 'Could not resolve|DNS|Network is unreachable|Failed to fetch' "$combined_log" && is_network_issue=true
+    grep -qiE 'Could not resolve|DNS resolution failed|Temporary failure resolving|Network is unreachable|Failed to fetch' "$combined_log" && is_network_issue=true
     grep -qiE ': command not found' "$combined_log" && is_cmd_not_found=true
   fi
 

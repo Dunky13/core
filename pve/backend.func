@@ -1497,7 +1497,7 @@ PROFILE
       if grep -qiE 'Cannot allocate memory|Out of memory|oom-killer|Killed process|JavaScript heap' "$combined_log"; then
         is_oom=true
       fi
-      if grep -qiE 'Could not resolve|DNS|Connection refused|Network is unreachable|No route to host|Temporary failure resolving|Failed to fetch' "$combined_log"; then
+      if grep -qiE 'Could not resolve|DNS resolution failed|Connection refused|Network is unreachable|No route to host|Temporary failure resolving|Failed to fetch' "$combined_log"; then
         is_network_issue=true
       fi
       if grep -qiE ': command not found|No such file or directory.*/s?bin/' "$combined_log"; then

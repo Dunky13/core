@@ -39,7 +39,7 @@ explain_exit_code() {
   # never reported success is someone backing out of a dialog. Every one of
   # those records read "Unknown error".
   0) echo "Cancelled before completion (no error)" ;;
-  1) echo "General error / Operation not permitted" ;;
+  1) echo "The command failed; its output says why" ;;
   2) echo "Misuse of shell builtins (e.g. syntax error)" ;;
   3) echo "General syntax or argument error" ;;
   10) echo "Docker / privileged mode required (unsupported environment)" ;;
