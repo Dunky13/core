@@ -369,11 +369,8 @@ default_vars() {
 # - If DEV_MODE_TRACE=true: Enables bash tracing (set -x)
 # ------------------------------------------------------------------------------
 set_std_mode() {
-  if [ "${VERBOSE:-no}" = "yes" ]; then
-    STD=""
-  else
-    STD="silent"
-  fi
+  # Verbose shows the output live and still keeps it in the log; silent() reads VERBOSE.
+  STD="silent"
 
   # Enable bash tracing if trace mode active
   if [[ "${DEV_MODE_TRACE:-false}" == "true" ]]; then
@@ -950,8 +947,16 @@ silent() {
   [[ -f "$logfile" ]] && start_bytes=$(stat -c%s "$logfile" 2>/dev/null || echo 0)
   [[ ! "$start_bytes" =~ ^[0-9]+$ ]] && start_bytes=0
 
-  "$@" >>"$logfile" 2>&1
-  local rc=$?
+  local rc
+  if [[ "${VERBOSE:-no}" == "yes" ]]; then
+    # Not a pipe: the command must stay in this shell so functions keep their side effects.
+    "$@" > >(tee -a "$logfile") 2>&1
+    rc=$?
+    wait $! 2>/dev/null
+  else
+    "$@" >>"$logfile" 2>&1
+    rc=$?
+  fi
 
   # Restore error handling ONLY if it was active before this call.
   if $_restore_errexit; then

@@ -31,6 +31,7 @@ on:
       - "tests/external-installer.sh"
       - "tests/forge-version-key.sh"
       - "tests/forge-connection.sh"
+      - "tests/failed-command-output.sh"
       - ".github/workflows/verify-split-files.yml"
   push:
     branches: [main]
@@ -53,6 +54,7 @@ on:
       - "tests/external-installer.sh"
       - "tests/forge-version-key.sh"
       - "tests/forge-connection.sh"
+      - "tests/failed-command-output.sh"
       - ".github/workflows/verify-split-files.yml"
   workflow_dispatch:
 
@@ -100,6 +102,9 @@ jobs:
 
       - name: Forge connection diagnosis tests
         run: bash tests/forge-connection.sh
+
+      - name: Failed command output tests
+        run: bash tests/failed-command-output.sh
 
       - name: Prefetch lists cover every engine file
         run: |

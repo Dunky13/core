@@ -411,6 +411,21 @@ _eh_print_log_tail() {
 }
 
 # ------------------------------------------------------------------------------
+# _eh_print_failed_output() - what the failing command printed, from .errinfo
+#
+# The exit code alone says nothing; this is the part of the log that does.
+# ------------------------------------------------------------------------------
+_eh_print_failed_output() {
+  local errinfo="$1" lines="${2:-25}" out
+  [[ -n "$errinfo" && -s "$errinfo" ]] || return 0
+  out="$(awk 'found { print } /^--- OUTPUT ---$/ { found = 1 }' "$errinfo" | cut -c1-400 | tail -n "$lines")"
+  [[ -n "$out" ]] || return 0
+  echo -e "\n${TAB}--- Output of the failing command ---" >&2
+  printf '%s\n' "$out" >&2
+  echo -e "${TAB}--------------------------------------\n" >&2
+}
+
+# ------------------------------------------------------------------------------
 # _eh_hint_missing_command() - name what could not be run, and where it comes from
 #
 # Installs nothing. This runs from a trap, after the fact, and a handler that

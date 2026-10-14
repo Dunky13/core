@@ -1245,6 +1245,7 @@ incus_run_install_script_with_recovery() {
   fi
 
   [[ -n "$error_explanation" ]] && echo -e "${TAB}${RD}Error: ${error_explanation}${CL}" && echo ""
+  declare -f _eh_print_failed_output >/dev/null 2>&1 && _eh_print_failed_output "${TELEMETRY_ERRINFO:-}"
   if [[ $install_exit_code -eq 10 ]]; then
     echo -e "${TAB}${INFO} Privileged / nesting / device hint:"
     echo -e "${TAB}${INFO}  • Privileged: ${GN}security.privileged=true${CL} (USB, Docker-in-LXC)"
