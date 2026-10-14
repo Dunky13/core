@@ -86,5 +86,32 @@ expect "an empty output section prints nothing" "" "$(_eh_print_failed_output "$
 expect "a missing errinfo prints nothing" "" "$(_eh_print_failed_output "$TEST_DIR/nope" 2>&1)"
 expect "no errinfo path prints nothing" "" "$(_eh_print_failed_output "" 2>&1)"
 
+# --- the container handler prefers the captured output over the raw log tail ---
+eval "$(awk '/^(error_handler|_eh_resolve_log|_eh_print_log_tail)[(][)] [{]/,/^}/' "$CORE_DIR/core/error_handler.func")"
+_eh_explanation() { echo "explained"; }
+_eh_report() { :; }
+_eh_write_debug_log() { :; }
+_eh_hint_missing_command() { :; }
+_eh_hint_node_oom() { :; }
+_eh_hint_from_log() { :; }
+_is_container_context() { return 0; }
+msg_error() { echo "error: $*"; }
+handler_output() {
+  # error_handler exits, so it runs in a subshell with the state silent() leaves behind.
+  (
+    export _SILENT_FAILED_RC=1 _SILENT_FAILED_CMD="pnpm install" _SILENT_FAILED_LINE=34 _SILENT_FAILED_LOG="$LOGFILE"
+    error_handler 1 "silent pnpm install" 2>&1
+  )
+}
+reset
+printf '%s\n' "[INFO] Building" "cargo noise" "ERR_PNPM_OUTDATED_LOCKFILE" >"$LOGFILE"
+printf 'EXIT_CODE=1\nLINE=34\nCOMMAND=pnpm install\n--- OUTPUT ---\nERR_PNPM_OUTDATED_LOCKFILE\n' >"$LOGFILE.errinfo"
+out="$(handler_output)"
+expect "with errinfo the handler shows the command output" 1 "$(printf '%s\n' "$out" | grep -c 'Output of the failing command')"
+expect "and leaves out the raw log tail" 0 "$(printf '%s\n' "$out" | grep -c 'Last 20 lines of log')"
+rm -f "$LOGFILE.errinfo"
+out="$(handler_output)"
+expect "without errinfo the raw tail remains" 1 "$(printf '%s\n' "$out" | grep -c 'Last 20 lines of log')"
+
 printf '%s passed, %s failed\n' "$passed" "$failed"
 ((failed == 0))

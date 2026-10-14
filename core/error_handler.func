@@ -665,10 +665,12 @@ error_handler() {
   command="${command//\$STD/}"
 
   # silent() knows the real failing command; the trap only sees the wrapper.
+  local from_silent=0
   if [[ -n "${_SILENT_FAILED_RC:-}" ]]; then
     exit_code="$_SILENT_FAILED_RC"
     command="$_SILENT_FAILED_CMD"
     line_number="$_SILENT_FAILED_LINE"
+    from_silent=1
     unset _SILENT_FAILED_RC _SILENT_FAILED_CMD _SILENT_FAILED_LINE
   fi
 
@@ -697,7 +699,12 @@ error_handler() {
   _eh_write_debug_log "$exit_code" "$command" "$line_number" "$explanation"
 
   _eh_resolve_log
-  _eh_print_log_tail "$_EH_ACTIVE_LOG"
+  # silent() captured exactly this command's output; the raw log tail is the fallback.
+  if ((from_silent)) && [[ -s "${_EH_ACTIVE_LOG}.errinfo" ]]; then
+    _eh_print_failed_output "${_EH_ACTIVE_LOG}.errinfo"
+  else
+    _eh_print_log_tail "$_EH_ACTIVE_LOG"
+  fi
   _eh_hint_missing_command "$exit_code" "$command"
   _eh_hint_node_oom "$exit_code" "$command" "$_EH_ACTIVE_LOG"
   _eh_hint_from_log "$_EH_ACTIVE_LOG"

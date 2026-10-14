@@ -1605,7 +1605,6 @@ PROFILE
       echo -e "${TAB}${RD}Error: ${error_explanation}${CL}"
       echo ""
     fi
-    declare -f _eh_print_failed_output >/dev/null 2>&1 && _eh_print_failed_output "${TELEMETRY_ERRINFO:-}"
 
     if [[ $install_exit_code -eq 10 ]]; then
       echo -e "${TAB}${INFO} This error usually means the container needs ${GN}privileged${CL} mode or Docker/nesting support."
