@@ -199,7 +199,14 @@ _identity_apply_templates() {
       _identity_error "invalid $template"
       return 1
     }
-    [[ -n "$literal" ]] && continue
+    if [[ -n "$literal" ]]; then
+      # A literal replaces the IPv6 template's address, including its implicit
+      # static mode. Explicit nonstatic methods continue to take precedence.
+      if [[ "$field" == ipv6 && -z "${var_ipv6_method:-}" ]]; then
+        IPV6_METHOD=static
+      fi
+      continue
+    fi
     if [[ "$field" == ipv6 && -n "${var_ipv6_method:-}" && "$var_ipv6_method" != static ]]; then
       continue
     fi

@@ -5,7 +5,7 @@ CORE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 if [[ $# == 0 ]]; then
   failed=0 passed=0
-  for scenario in legacy-pve legacy-incus incus-reject bounds holes generic-1200 generic-3000 generic-high-id local-orphan empty-cluster api-failure malformed-resources exhausted explicit-id tokens invalid-templates ipv6 defaults global-defaults precedence env-precedence save-reload wizard wizard-accept wizard-id-change wizard-clear-mac final-net0 late-collision pct-collision; do
+  for scenario in legacy-pve legacy-incus incus-reject bounds holes generic-1200 generic-3000 generic-high-id local-orphan empty-cluster api-failure malformed-resources exhausted explicit-id tokens invalid-templates ipv6 defaults global-defaults precedence env-precedence save-reload wizard wizard-accept wizard-id-change wizard-clear-mac ipv6-literal-implicit ipv6-literal-methods wizard-back-edits wizard-back-clear wizard-modes wizard-modes-static wizard-cancel-ipv6 final-net0 late-collision pct-collision; do
     if bash "$0" "$scenario"; then
       echo "PASS $scenario"
       passed=$((passed + 1))
@@ -99,15 +99,17 @@ net0_capture() {
 }
 # Actual wizard, with whiptail's response stream and noninteractive host stubs.
 wizard_run() {
+  local wizard_pid="$BASHPID"
   populate_advanced_bridge_menu() { BRIDGES=vmbr0; }
   tput() { :; }
   timedatectl() { :; }
   configure_ssh_settings() { :; }
   validate_bridge() { [[ "$1" == vmbr0 ]]; }
   whiptail() {
-    local title="" previous="" arg
+    local title="" previous="" menu_default="" arg
     for arg in "$@"; do
       [[ "$previous" == --title ]] && title="$arg"
+      [[ "$previous" == --default-item ]] && menu_default="$arg"
       previous="$arg"
     done
     if [[ "${WIZARD_ACCEPT:-0}" == 1 ]]; then
@@ -121,7 +123,61 @@ wizard_run() {
     printf '%s\n' "$title" >>"$TEST_DIR/dialogs"
     if [[ $(wc -l <"$TEST_DIR/dialogs") -gt 90 ]]; then
       tail -12 "$TEST_DIR/dialogs" >&2
-      exit 98
+      kill -TERM "$wizard_pid"
+      return 98
+    fi
+    if [[ -n "${WIZARD_NAVIGATION:-}" ]]; then
+      local visit
+      visit=$(grep -c -x "$title" "$TEST_DIR/dialogs")
+      printf '%s|%s|%s\n' "$title" "$menu_default" "${!#}" >>"$TEST_DIR/dialog-state"
+      case "$title" in
+      'IPv4 CONFIGURATION')
+        if [[ "$WIZARD_NAVIGATION" == back-* ]]; then
+          if ((visit == 1)); then echo static >&2; else echo "$menu_default" >&2; fi
+        elif ((visit == 1)) || [[ "$WIZARD_NAVIGATION" == modes || "$WIZARD_NAVIGATION" == cancel-ipv6 ]]; then
+          echo dhcp >&2
+        else
+          echo static >&2
+        fi
+        return 0
+        ;;
+      'STATIC IPv4 ADDRESS')
+        if ((visit == 1)); then echo 10.20.9.3/16 >&2; else echo "${!#}" >&2; fi
+        return 0
+        ;;
+      'IPv6 CONFIGURATION')
+        if ((visit == 1)); then return 1; fi # Back to IPv4 after its accepted edit/mode change.
+        if [[ "$WIZARD_NAVIGATION" == back-* ]]; then
+          if ((visit == 2)); then echo static >&2; else echo "$menu_default" >&2; fi
+        elif ((visit == 2)); then
+          echo "${WIZARD_IPV6_MODE:-dhcp}" >&2
+        elif [[ "$WIZARD_NAVIGATION" == modes-static || ("$WIZARD_NAVIGATION" == cancel-ipv6 && "$visit" == 3) ]]; then
+          echo static >&2
+        else
+          echo "$menu_default" >&2
+        fi
+        return 0
+        ;;
+      'STATIC IPv6 ADDRESS')
+        if [[ "$WIZARD_NAVIGATION" == cancel-ipv6 ]]; then return 1; fi
+        if ((visit == 1)); then echo 2001:db8::93/64 >&2; else echo "${!#}" >&2; fi
+        return 0
+        ;;
+      'MTU SIZE')
+        if ((visit == 1)); then return 1; fi # Back to IPv6 after its accepted edit/mode change.
+        ;;
+      'MAC ADDRESS')
+        if ((visit == 1)); then
+          if [[ "$WIZARD_NAVIGATION" == back-clear ]]; then echo '' >&2; else echo 02:00:00:00:99:03 >&2; fi
+        else
+          echo "${!#}" >&2
+        fi
+        return 0
+        ;;
+      'VLAN TAG')
+        if ((visit == 1)); then return 1; fi # Back to MAC, including intentional clearing.
+        ;;
+      esac
     fi
     case "$title" in
     'CONTAINER TYPE') echo 1 >&2 ;;
@@ -497,6 +553,101 @@ wizard | wizard-accept | wizard-id-change | wizard-clear-mac)
     same "$WIZARD_NET" "$NET"
     same "$WIZARD_IPV6" "$IPV6_ADDR"
   fi
+  ;;
+ipv6-literal-implicit)
+  var_ctid=612
+  cat <<'VARS' >"$TEST_DIR/ipv6-literal.vars"
+var_ctid_min=604
+var_ipv6_template=2001:db8::{id}/64
+var_ipv6_static=2001:db8::42/64
+VARS
+  load_vars_file "$TEST_DIR/ipv6-literal.vars" yes
+  base_settings
+  same static "$IPV6_METHOD"
+  same 2001:db8::42/64 "$IPV6_ADDR"
+  (net0_capture)
+  grep -q -- ',ip6=2001:db8::42/64$' "$TEST_DIR/pct-options"
+  ;;
+ipv6-literal-methods)
+  for method in static none auto dhcp disable; do
+    (
+      cat <<VARS >"$TEST_DIR/ipv6-method.vars"
+var_ctid_min=604
+var_ipv6_template=2001:db8::{id}/64
+var_ipv6_static=2001:db8::42/64
+var_ipv6_method=$method
+VARS
+      load_vars_file "$TEST_DIR/ipv6-method.vars" yes
+      base_settings
+      same "$method" "$IPV6_METHOD"
+      (net0_capture)
+      case "$method" in
+      static) grep -q -- ',ip6=2001:db8::42/64$' "$TEST_DIR/pct-options" ;;
+      auto | dhcp) grep -q -- ",ip6=$method$" "$TEST_DIR/pct-options" ;;
+      none | disable) ! grep -q -- ',ip6=' "$TEST_DIR/pct-options" ;;
+      esac
+    )
+  done
+  ;;
+wizard-back-edits | wizard-back-clear | wizard-modes | wizard-modes-static | wizard-cancel-ipv6)
+  # Mode variants each drive real forward/back dialogs, then the actual builder.
+  for method in auto dhcp none disable; do
+    (
+      static_policy
+      var_ctid=612
+      base_settings
+      WIZARD_NAVIGATION="${1#wizard-}"
+      WIZARD_IPV6_MODE="$method"
+      rm -f "$TEST_DIR/dialogs" "$TEST_DIR/dialog-state"
+      wizard_run
+      if [[ "$WIZARD_NAVIGATION" == back-clear ]]; then same '' "$MAC"; fi
+      if [[ "$WIZARD_NAVIGATION" == back-* ]]; then
+        same 10.20.9.3/16 "$NET"
+        same 2001:db8::93/64 "$IPV6_ADDR"
+        grep -q '^STATIC IPv4 ADDRESS||10.20.9.3/16$' "$TEST_DIR/dialog-state"
+        grep -q '^STATIC IPv6 ADDRESS||2001:db8::93/64$' "$TEST_DIR/dialog-state"
+      else
+        grep -q '^IPv4 CONFIGURATION|dhcp|' "$TEST_DIR/dialog-state"
+        grep -q "^IPv6 CONFIGURATION|$method|" "$TEST_DIR/dialog-state"
+      fi
+      if [[ "$WIZARD_NAVIGATION" == back-clear ]]; then
+        same '' "$MAC"
+        grep -q '^MAC ADDRESS||$' "$TEST_DIR/dialog-state"
+      else
+        same ,hwaddr=02:00:00:00:99:03 "$MAC"
+        grep -q '^MAC ADDRESS||02:00:00:00:99:03$' "$TEST_DIR/dialog-state"
+      fi
+      (net0_capture)
+      case "$WIZARD_NAVIGATION" in
+      back-*) grep -q -- ',ip=10.20.9.3/16,gw=10.20.0.1,tag=6,ip6=2001:db8::93/64' "$TEST_DIR/pct-options" ;;
+      modes-static)
+        same static "$IPV6_METHOD"
+        same 10.20.9.3/16 "$NET"
+        grep -q '^STATIC IPv4 ADDRESS||$' "$TEST_DIR/dialog-state"
+        grep -q '^STATIC IPv6 ADDRESS||$' "$TEST_DIR/dialog-state"
+        grep -q -- ',ip=10.20.9.3/16,gw=10.20.0.1,tag=6,ip6=2001:db8::93/64' "$TEST_DIR/pct-options"
+        ;;
+      modes | cancel-ipv6)
+        same dhcp "$NET"
+        same "$method" "$IPV6_METHOD"
+        if [[ "$WIZARD_NAVIGATION" == cancel-ipv6 ]]; then
+          same 2 "$(grep -c "^IPv6 CONFIGURATION|$method|" "$TEST_DIR/dialog-state")"
+        fi
+        case "$method" in
+        auto | dhcp) grep -q -- ",ip=dhcp,tag=6,ip6=$method$" "$TEST_DIR/pct-options" ;;
+        none | disable) ! grep -q -- ',ip6=' "$TEST_DIR/pct-options" ;;
+        esac
+        ;;
+      esac
+      if [[ "$WIZARD_NAVIGATION" == back-clear ]]; then
+        ! grep -q -- ',hwaddr=' "$TEST_DIR/pct-options"
+      else
+        grep -q -- ',hwaddr=02:00:00:00:99:03,' "$TEST_DIR/pct-options"
+      fi
+    )
+    # Back/edit scenarios are independent of nonstatic mode choices.
+    if [[ "$1" == wizard-back-* ]]; then break; fi
+  done
   ;;
 final-net0)
   static_policy

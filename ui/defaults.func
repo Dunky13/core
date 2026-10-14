@@ -627,8 +627,8 @@ load_vars_file() {
           fi
           ;;
         var_ipv6_method)
-          if [[ "$var_val" != "auto" && "$var_val" != "dhcp" && "$var_val" != "static" && "$var_val" != "none" ]]; then
-            msg_warn "Invalid IPv6 method '$var_val' in $file (must be auto/dhcp/static/none), ignoring"
+          if [[ "$var_val" != "auto" && "$var_val" != "dhcp" && "$var_val" != "static" && "$var_val" != "none" && "$var_val" != "disable" ]]; then
+            msg_warn "Invalid IPv6 method '$var_val' in $file (must be auto/dhcp/static/none/disable), ignoring"
             continue
           fi
           ;;
