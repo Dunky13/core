@@ -34,6 +34,7 @@ on:
       - "tests/forge-connection.sh"
       - "tests/failed-command-output.sh"
       - "tests/forge-release-json.sh"
+      - "tests/container-identity.sh"
       - ".github/workflows/verify-split-files.yml"
   push:
     branches: [main]
@@ -59,6 +60,7 @@ on:
       - "tests/forge-connection.sh"
       - "tests/failed-command-output.sh"
       - "tests/forge-release-json.sh"
+      - "tests/container-identity.sh"
       - ".github/workflows/verify-split-files.yml"
   workflow_dispatch:
 
@@ -79,6 +81,9 @@ jobs:
             bash -n "$f" || { echo "::error file=$f::syntax error"; fail=1; }
           done < <(find $ENGINE_DIRS -name '*.func' -type f)
           exit $fail
+
+      - name: Container identity regression tests
+        run: bash tests/container-identity.sh
 
       - name: ISO storage regression tests
         run: bash tests/vm-iso-storage.sh

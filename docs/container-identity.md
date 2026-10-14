@@ -1,0 +1,152 @@
+# Opt-in container identity templates (PoC)
+
+Proposal: [community-scripts/core#142](https://github.com/community-scripts/core/issues/142).
+This engine PoC targets Proxmox VE. It does not change Proxmox datacenter settings,
+create DHCP reservations, or call OPNsense. Incus rejects these PVE-only options;
+without them, both backends retain their existing defaults and identifier paths.
+
+## Choose the scope of ID allocation
+
+Proxmox already provides cluster-wide allocation through `/cluster/nextid` and
+the datacenter `next-id.lower` setting. That is the native choice for a minimum
+that should apply globally. This PoC adds optional per-run or per-application
+bounds; it does not implement a persistent policy tied to a Proxmox user account.
+
+- `var_ctid_min=604`: automatic selection starts at 604, reusing holes.
+- `var_ctid_max=9999`: optional **inclusive** maximum. This differs from the
+  native datacenter `next-id.upper`, which is exclusive. If omitted, the PoC
+  maximum is 999999999; if only a maximum is set, the minimum is 100.
+- Bounds must be canonical decimal IDs in 100..999999999, with min <= max.
+- An explicit, free `var_ctid` wins even outside the automatic bounds. An
+  occupied explicit ID enters automatic selection; an out-of-range suggestion
+  restarts at the configured minimum. There is no reservation or lock: another
+  process can claim an ID before creation.
+
+Automatic bounded selection parses `/cluster/resources --type vm` as JSON and
+excludes both VMs and containers on all nodes, then uses the existing validator
+for local/pmxcfs and LVM conflicts. For example, with 604, 605 and 607 occupied,
+selection returns 606. Failed API calls, malformed responses, and exhausted
+ranges fail instead of guessing an ID. The bounded path needs `jq`, installed
+through the engine's existing dependency helper if necessary.
+
+## MAC-only mode for DHCP reservations
+
+Put these values in the usual app defaults file, or export them for one run:
+
+```sh
+var_ctid_min=604
+var_ctid_max=9999
+var_mac_template=02:00:00:00:{id_hi2}:{id_lo2}
+var_vlan=6
+```
+
+For CTID 612, this generates `02:00:00:00:06:12`. IPv4 remains DHCP and IPv6
+keeps its usual configured method. VLAN 6 uses the existing `var_vlan` option.
+`02:00:00:00` is a dummy locally administered unicast prefix; choose a prefix
+that is unique on your network. The script does not check MAC uniqueness on
+other networks and does not modify the DHCP server or firewall. An operator
+can separately reserve a DHCP address for that MAC.
+
+## Optional static IPv4 and IPv6
+
+```sh
+var_ctid_min=604
+var_ctid_max=9999
+var_mac_template=02:00:00:00:{id_hi2}:{id_lo2}
+var_net_template=10.20.{id_hi}.{id_lo}/16
+var_gateway=10.20.0.1
+var_ipv6_template=2001:db8::{id_hi}:{id_lo}/64
+var_vlan=6
+```
+
+For CTID 612, the rendered values are `10.20.6.12/16` and
+`2001:db8::6:12/64`. `2001:db8` is a documentation prefix; replace it before
+using the IPv6 example on a real network. Choose a subnet, mask, gateway and
+address plan appropriate for your VLAN. This does not probe for IP conflicts,
+allocate from IPAM, or establish that an address is reachable.
+
+**Omit `var_net` when you want `var_net_template` to apply.** The standard
+`default.vars` file contains `var_net=dhcp`; that explicit value wins over an
+IPv4 template. Likewise, omit `var_mac`, `var_ipv6_static`, and an explicit
+`var_ipv6_method=none`, `auto`, or `dhcp` when you want the corresponding
+template. An IPv6 template selects static mode when no explicit method is set;
+`var_ipv6_method=static` is also compatible with it.
+
+A smaller range can use the whole decimal ID as a host octet:
+
+```sh
+var_ctid_min=100
+var_ctid_max=199
+var_net_template=192.0.2.{id}/24
+```
+
+At CTID 150, this renders `192.0.2.150/24`. `192.0.2.0/24` is for documentation.
+Syntax is checked while loading; address validity is checked against the actual
+selected ID, never an arbitrary sample ID.
+
+## Token vocabulary and validation
+
+Only these fixed substitutions are supported; no expression or configuration
+is evaluated as shell code:
+
+- `{id}`: the complete decimal CTID, e.g. `612`.
+- `{id_hi}`: decimal integer quotient ID / 100, e.g. `6`.
+- `{id_lo}`: decimal remainder ID % 100, e.g. `12`.
+- `{id_hi2}` and `{id_lo2}`: the same decimal pieces padded to two digits,
+  e.g. `06` and `12`.
+
+These are decimal **digits**, not a conversion to hexadecimal: 612 maps to
+`06:12`, not `02:64`. IPv6 interprets the substituted digit strings using its
+usual hexadecimal address notation.
+
+Unknown tokens, shell metacharacters, invalid resulting MAC/IP addresses and
+numeric overflow fail. A MAC template must encode the whole ID using `{id}`
+or both high and low tokens. `{id_hi2}` rejects IDs above 9999; it never drops
+high digits to make a MAC fit. Generated MACs must be nonzero and unicast.
+IPv4 octets cannot exceed 255 or use leading zeros; subnet network and broadcast
+addresses are rejected for /1 through /30, while /31 and /32 remain supported.
+Thus a template that maps CTID 700 to `10.20.7.0/24` fails. IPv6 requires valid
+hextet counts, at most one compression marker, and a /1 through /128 prefix.
+
+## Overrides, wizard and saving
+
+The safe defaults loader accepts the new variables in the existing global and
+app defaults paths. For identity options, existing app-script settings survive
+a non-forced global load; app defaults loaded with force override them.
+Genuine exported environment identity settings have the highest precedence,
+including when app defaults are loaded with force. Literal values win per field
+over templates regardless of which layer supplied the template.
+
+The advanced wizard starts with the selected ID and rendered values. Address
+edits become explicit literals on save. Generated MAC, IPv4 and IPv6 addresses
+are omitted from saved defaults; the template expressions and bounds survive.
+A later run therefore renders addresses for its own selected ID. Clearing a
+generated MAC in the wizard saves an empty MAC template, restoring automatic
+MAC assignment. Choosing DHCP or another IPv6 method saves that explicit choice.
+When an IPv6 template is configured, an explicit IPv6 static override can also
+be saved and reloaded; the legacy no-opt-in static-default path is unchanged.
+
+**This PoC aborts ID changes after a template has generated an address.**
+Changing the ID in the wizard, a late ID collision, and a `pct create` collision
+all stop with an explanation before creation under a different ID. Restart the
+installer with the desired/new free ID so the templates render again. The PoC
+does not rewrite existing network options during retries. Literal-only runs
+retain the existing retry behavior, and bounds alone do not pin the ID.
+
+## Verification and limits
+
+Run from the engine repository with Bash and jq:
+
+```sh
+bash tests/container-identity.sh
+```
+
+The executable tests load the real shared UI/defaults loader and Incus entry
+point, stub the cluster API and host commands, drive the actual advanced wizard,
+exercise the real final `PCT_OPTIONS` builder, and check the actual late-ID and
+`pct create` collision code. CI runs this suite in `verify-split-files.yml`.
+
+These are isolated tests, not a real PVE installation. Live cluster API behavior,
+container creation, DHCP, VLAN routing, IPv6 reachability, and OPNsense integration
+remain unverified. Use a disposable test guest for runtime validation. This guide
+and its offline HTML companion describe a PoC, not a production deployment.
