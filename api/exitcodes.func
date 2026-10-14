@@ -40,8 +40,8 @@ explain_exit_code() {
   # those records read "Unknown error".
   0) echo "Cancelled before completion (no error)" ;;
   1) echo "The command failed; its output says why" ;;
-  2) echo "Misuse of shell builtins (e.g. syntax error)" ;;
-  3) echo "General syntax or argument error" ;;
+  2) echo "The command failed with status 2 (a usage error for most tools); its output says why" ;;
+  3) echo "The command failed with status 3; its output says why" ;;
   10) echo "Docker / privileged mode required (unsupported environment)" ;;
 
   # --- curl / wget errors ---
@@ -133,7 +133,7 @@ explain_exit_code() {
   125) echo "Command failed to start (Docker daemon or execution error)" ;;
   126) echo "Command invoked cannot execute (permission problem?)" ;;
   127) echo "Command not found" ;;
-  128) echo "Invalid argument to exit" ;;
+  128) echo "git: Fatal error (repository, network or permission problem)" ;;
   129) echo "Killed by SIGHUP (terminal closed / hangup)" ;;
   130) echo "Aborted by user (SIGINT)" ;;
   131) echo "Killed by SIGQUIT (core dumped)" ;;

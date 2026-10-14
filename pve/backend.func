@@ -1550,8 +1550,11 @@ PROFILE
 
     echo ""
 
-    local error_explanation=""
-    if declare -f explain_exit_code >/dev/null 2>&1; then
+    local error_explanation="" failed_cmd=""
+    [[ -s "${TELEMETRY_ERRINFO:-}" ]] && failed_cmd="$(sed -n 's/^COMMAND=//p' "$TELEMETRY_ERRINFO" | head -n1)"
+    if declare -f _eh_explanation >/dev/null 2>&1; then
+      error_explanation="$(_eh_explanation "$install_exit_code" "$failed_cmd")"
+    elif declare -f explain_exit_code >/dev/null 2>&1; then
       error_explanation="$(explain_exit_code "$install_exit_code")"
     fi
 
@@ -1560,7 +1563,12 @@ PROFILE
     fi
 
     case "$install_exit_code" in
-    100 | 101 | 102) is_apt_issue=true ;;
+    100 | 101 | 102)
+      # cargo exits 101 on a panic; only an apt/dpkg command makes this an APT problem
+      if [[ -z "$failed_cmd" ]] || ! declare -f _eh_command_is >/dev/null 2>&1 || _eh_command_is "$failed_cmd" "$(_eh_tools_for APT)"; then
+        is_apt_issue=true
+      fi
+      ;;
     255)
       if [[ -f "$combined_log" ]] && grep -qiE 'dpkg|apt-get|apt\.conf|broken packages|unmet dependencies|E: Sub-process|E: Failed' "$combined_log"; then
         is_apt_issue=true

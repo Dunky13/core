@@ -40,8 +40,8 @@ if ! declare -f explain_exit_code &>/dev/null; then
     local code="$1"
     case "$code" in
     1) echo "The command failed; its output says why" ;;
-    2) echo "Misuse of shell builtins (e.g. syntax error)" ;;
-    3) echo "General syntax or argument error" ;;
+    2) echo "The command failed with status 2 (a usage error for most tools); its output says why" ;;
+    3) echo "The command failed with status 3; its output says why" ;;
     10) echo "Docker / privileged mode required (unsupported environment)" ;;
     4) echo "curl: Feature not supported or protocol error" ;;
     5) echo "curl: Could not resolve proxy" ;;
@@ -123,7 +123,7 @@ if ! declare -f explain_exit_code &>/dev/null; then
     125) echo "Command failed to start (Docker daemon or execution error)" ;;
     126) echo "Command invoked cannot execute (permission problem?)" ;;
     127) echo "Command not found" ;;
-    128) echo "Invalid argument to exit" ;;
+    128) echo "git: Fatal error (repository, network or permission problem)" ;;
     129) echo "Killed by SIGHUP (terminal closed / hangup)" ;;
     130) echo "Aborted by user (SIGINT)" ;;
     131) echo "Killed by SIGQUIT (core dumped)" ;;
@@ -334,13 +334,37 @@ _eh_ok() {
 # readings are only right if curl is what actually ran, so they are dropped when
 # the failing command was something else.
 # ------------------------------------------------------------------------------
+# A tool-specific explanation only holds when the failing command is that tool:
+# cargo's 101 is a panic, not an APT configuration error.
 _eh_explanation() {
-  local exit_code="$1" command="$2" explanation
+  local exit_code="$1" command="$2" explanation tools
   explanation="$(explain_exit_code "$exit_code")"
-  if [[ "$explanation" == curl:* && ! "$command" =~ (^|[[:space:]])([^[:space:]]*/)?curl([[:space:]]|$) ]]; then
+  tools="$(_eh_tools_for "${explanation%%:*}")"
+  if [[ -n "$tools" ]] && ! _eh_command_is "$command" "$tools"; then
     explanation="Command failed with exit status ${exit_code}"
   fi
   printf '%s' "$explanation"
+}
+
+# The prefix of an explanation names the tool family it belongs to.
+_eh_tools_for() {
+  case "$1" in
+  curl) echo "curl" ;;
+  APT | DPKG) echo "apt|apt-get|apt-cache|aptitude|dpkg|dpkg-query|dpkg-reconfigure" ;;
+  Node.js | npm/Node.js | npm/pnpm/yarn) echo "node|npm|npx|pnpm|yarn|corepack|bun" ;;
+  Python) echo "python|python3|pip|pip3|pipx|uv|uvx" ;;
+  PostgreSQL) echo "psql|pg_[a-z_]+|postgres" ;;
+  MySQL/MariaDB) echo "mysql|mariadb|mysqladmin|mariadb-admin" ;;
+  MongoDB) echo "mongosh|mongo|mongod" ;;
+  Systemd) echo "systemctl" ;;
+  git) echo "git" ;;
+  esac
+}
+
+# Does the command line run one of the tools (first word or any word, with or without a path)?
+_eh_command_is() {
+  local command="$1" tools="$2"
+  [[ "$command" =~ (^|[[:space:]]|/)(${tools})([[:space:]]|$) ]]
 }
 
 # ------------------------------------------------------------------------------

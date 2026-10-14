@@ -3,7 +3,7 @@ set -uo pipefail
 
 CORE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 eval "$(awk '/^explain_exit_code[(][)] [{]/,/^}/' "$CORE_DIR/api/exitcodes.func")"
-eval "$(awk '/^_eh_hint_from_log[(][)] [{]/,/^}/' "$CORE_DIR/core/error_handler.func")"
+eval "$(awk '/^_eh_(hint_from_log|explanation|tools_for|command_is)[(][)] [{]/,/^}/' "$CORE_DIR/core/error_handler.func")"
 
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf -- "$TEST_DIR"' EXIT
@@ -25,6 +25,18 @@ expect() {
 # Exit status 1 is the command's own verdict; errno 1 (EPERM) is something else.
 expect "exit 1 is not explained as EPERM" 0 "$(explain_exit_code 1 | grep -c 'Operation not permitted')"
 expect "the container fallback table agrees" 0 "$(grep -E '^ *1[)] echo' "$CORE_DIR/core/error_handler.func" | grep -c 'Operation not permitted')"
+
+# A tool-specific meaning holds only for that tool; everything else gets the plain status.
+expect "cargo 101 is not an APT error" "Command failed with exit status 101" "$(_eh_explanation 101 'cargo build --release')"
+expect "apt-get 101 keeps the APT text" APT "$(_eh_explanation 101 'apt-get install -y jq' | cut -d: -f1)"
+expect "a core wrapper returning 7 is not curl" "Command failed with exit status 7" "$(_eh_explanation 7 'fetch_and_deploy_gh_release app owner/repo')"
+expect "curl 7 with a path keeps the curl text" curl "$(_eh_explanation 7 '/usr/bin/curl -fsSL https://x' | cut -d: -f1)"
+expect "git 128 is a git fatal error" git "$(_eh_explanation 128 'git clone https://x' | cut -d: -f1)"
+expect "pnpm 128 is not" "Command failed with exit status 128" "$(_eh_explanation 128 'pnpm build')"
+expect "node 243 keeps the Node text" Node.js "$(_eh_explanation 243 'node server.js' | cut -d: -f1)"
+expect "python 243 does not" "Command failed with exit status 243" "$(_eh_explanation 243 'python3 app.py')"
+expect "core codes stay as they are" Proxmox "$(_eh_explanation 209 '' | cut -d: -f1)"
+expect "unprefixed codes stay as they are" "Command not found" "$(_eh_explanation 127 'foo')"
 
 : >"$WARN"
 printf '%s\n' 'Scope: all 36 workspace projects' ' ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with "frozen-lockfile" because pnpm-lock.yaml is not up to date with <ROOT>/server/package.json' >"$LOG"
