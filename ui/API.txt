@@ -25,6 +25,7 @@ _eh_hint_node_oom
 _eh_info
 _eh_offer_container_removal
 _eh_ok
+_eh_print_failed_output
 _eh_print_log_tail
 _eh_quiet_spinner
 _eh_report
