@@ -30,7 +30,9 @@ on:
       - "tests/docker-lxcfs.sh"
       - "tests/external-installer.sh"
       - "tests/forge-version-key.sh"
+      - "tests/nodejs-key-refresh.sh"
       - "tests/forge-connection.sh"
+      - "tests/forge-release-json.sh"
       - "tests/failed-command-output.sh"
       - ".github/workflows/verify-split-files.yml"
   push:
@@ -53,7 +55,9 @@ on:
       - "tests/docker-lxcfs.sh"
       - "tests/external-installer.sh"
       - "tests/forge-version-key.sh"
+      - "tests/nodejs-key-refresh.sh"
       - "tests/forge-connection.sh"
+      - "tests/forge-release-json.sh"
       - "tests/failed-command-output.sh"
       - ".github/workflows/verify-split-files.yml"
   workflow_dispatch:
@@ -100,8 +104,14 @@ jobs:
       - name: Forge version key regression tests
         run: bash tests/forge-version-key.sh
 
+      - name: Node.js key refresh tests
+        run: bash tests/nodejs-key-refresh.sh
+
       - name: Forge connection diagnosis tests
         run: bash tests/forge-connection.sh
+
+      - name: Forge release lookup tests
+        run: bash tests/forge-release-json.sh
 
       - name: Failed command output tests
         run: bash tests/failed-command-output.sh
