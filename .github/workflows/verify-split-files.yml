@@ -32,8 +32,8 @@ on:
       - "tests/forge-version-key.sh"
       - "tests/nodejs-key-refresh.sh"
       - "tests/forge-connection.sh"
-      - "tests/forge-release-json.sh"
       - "tests/failed-command-output.sh"
+      - "tests/forge-release-json.sh"
       - ".github/workflows/verify-split-files.yml"
   push:
     branches: [main]
@@ -57,8 +57,8 @@ on:
       - "tests/forge-version-key.sh"
       - "tests/nodejs-key-refresh.sh"
       - "tests/forge-connection.sh"
-      - "tests/forge-release-json.sh"
       - "tests/failed-command-output.sh"
+      - "tests/forge-release-json.sh"
       - ".github/workflows/verify-split-files.yml"
   workflow_dispatch:
 
@@ -110,11 +110,11 @@ jobs:
       - name: Forge connection diagnosis tests
         run: bash tests/forge-connection.sh
 
-      - name: Forge release lookup tests
-        run: bash tests/forge-release-json.sh
-
       - name: Failed command output tests
         run: bash tests/failed-command-output.sh
+
+      - name: Forge release lookup tests
+        run: bash tests/forge-release-json.sh
 
       - name: Prefetch lists cover every engine file
         run: |
