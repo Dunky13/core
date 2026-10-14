@@ -1112,7 +1112,7 @@ _build_current_app_vars_tmp() {
     [ -n "$_ns" ] && echo "var_ns=$(_sanitize_value "$_ns")"
 
     [ -n "$_ipv6_method" ] && echo "var_ipv6_method=$(_sanitize_value "$_ipv6_method")"
-    if [[ -n "${var_ipv6_template:-}" && "$_ipv6_method" == static && -n "$_ipv6_static" ]]; then
+    if _identity_enabled && [[ "$_ipv6_method" == static && -n "$_ipv6_static" ]]; then
       printf 'var_ipv6_static=%s\n' "$_ipv6_static"
     fi
 

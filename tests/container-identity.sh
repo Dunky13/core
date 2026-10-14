@@ -5,7 +5,7 @@ CORE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 if [[ $# == 0 ]]; then
   failed=0 passed=0
-  for scenario in legacy-pve legacy-incus incus-reject bounds holes generic-1200 generic-3000 generic-high-id local-orphan empty-cluster api-failure malformed-resources exhausted explicit-id tokens invalid-templates ipv6 defaults global-defaults precedence env-precedence save-reload wizard wizard-accept wizard-id-change wizard-clear-mac ipv6-literal-implicit ipv6-literal-methods wizard-back-edits wizard-back-clear wizard-modes wizard-modes-static wizard-cancel-ipv6 final-net0 late-collision pct-collision; do
+  for scenario in legacy-pve legacy-incus incus-reject bounds holes generic-1200 generic-3000 generic-high-id local-orphan empty-cluster api-failure malformed-resources exhausted explicit-id tokens invalid-templates ipv6 defaults global-defaults precedence env-precedence save-reload save-ipv6-bounds save-ipv6-mac save-ipv6-all save-ipv6-legacy wizard wizard-accept wizard-id-change wizard-clear-mac ipv6-literal-implicit ipv6-literal-methods wizard-back-edits wizard-back-clear wizard-modes wizard-modes-static wizard-cancel-ipv6 final-net0 late-collision pct-collision; do
     if bash "$0" "$scenario"; then
       echo "PASS $scenario"
       passed=$((passed + 1))
@@ -62,6 +62,17 @@ reject() {
   if ("$@") >"$TEST_DIR/rejected" 2>&1; then
     echo "Unexpected success: $*" >&2
     return 1
+  fi
+}
+assert_lacks() {
+  # Negated commands suppress errexit and later assertions can hide failure.
+  # Exit explicitly on a match and also propagate grep's I/O errors.
+  if grep -Fq -- "$1" "$2"; then
+    echo "Unexpected <$1> in $2" >&2
+    exit 1
+  else
+    local rc=$?
+    if ((rc != 1)); then exit "$rc"; fi
   fi
 }
 policy() {
@@ -505,7 +516,9 @@ save-reload)
   saved=$(_build_current_app_vars_tmp)
   cp "$saved" "$TEST_DIR/saved.vars"
   rm -f "$saved"
-  grep -q '^var_mac_template=02:00:00:00:{id_hi2}:{id_lo2}$' "$TEST_DIR/saved.vars"
+  grep -Fqx 'var_mac_template=02:00:00:00:{id_hi2}:{id_lo2}' "$TEST_DIR/saved.vars"
+  grep -Fqx 'var_net_template=10.20.{id_hi}.{id_lo}/16' "$TEST_DIR/saved.vars"
+  grep -Fqx 'var_ipv6_template=2001:db8::{id_hi}:{id_lo}/64' "$TEST_DIR/saved.vars"
   if grep -Eq '^var_(mac|net|ipv6_static|ipv6_method)=' "$TEST_DIR/saved.vars"; then exit 1; fi
   unset var_ctid _IDENTITY_BOUND_ID _IDENTITY_GENERATED_MAC _IDENTITY_GENERATED_NET _IDENTITY_GENERATED_IPV6
   load_vars_file "$TEST_DIR/saved.vars" yes
@@ -515,6 +528,62 @@ save-reload)
   same 10.20.6.4/16 "$NET"
   same 2001:db8::6:4/64 "$IPV6_ADDR"
   same 6 "$VLAN"
+  (net0_capture)
+  grep -q -- ',ip6=2001:db8::6:4/64$' "$TEST_DIR/pct-options"
+  ;;
+save-ipv6-bounds | save-ipv6-mac | save-ipv6-all | save-ipv6-legacy)
+  var_ctid=612
+  case "$1" in
+  save-ipv6-bounds) var_ctid_min=604 ;;
+  save-ipv6-mac) var_mac_template='02:00:00:00:{id_hi2}:{id_lo2}' ;;
+  save-ipv6-all) static_policy ;;
+  save-ipv6-legacy) : ;;
+  esac
+  base_settings
+  WIZARD_MAC="${MAC#*,hwaddr=}"
+  WIZARD_NET=10.20.9.3/16 WIZARD_IPV6=2001:db8::93/64
+  wizard_run
+  same static "$IPV6_METHOD"
+  same 2001:db8::93/64 "$IPV6_ADDR"
+  saved=$(_build_current_app_vars_tmp)
+  cp "$saved" "$TEST_DIR/saved.vars"
+  rm -f "$saved"
+  grep -Fqx 'var_ipv6_method=static' "$TEST_DIR/saved.vars"
+  if [[ "$1" == save-ipv6-legacy ]]; then
+    assert_lacks 'var_ipv6_static=' "$TEST_DIR/saved.vars"
+  else
+    grep -Fqx 'var_ipv6_static=2001:db8::93/64' "$TEST_DIR/saved.vars"
+  fi
+  case "$1" in
+  save-ipv6-mac | save-ipv6-all) grep -Fqx 'var_mac_template=02:00:00:00:{id_hi2}:{id_lo2}' "$TEST_DIR/saved.vars" ;;
+  esac
+  if [[ "$1" == save-ipv6-all ]]; then
+    grep -Fqx 'var_net_template=10.20.{id_hi}.{id_lo}/16' "$TEST_DIR/saved.vars"
+    grep -Fqx 'var_ipv6_template=2001:db8::{id_hi}:{id_lo}/64' "$TEST_DIR/saved.vars"
+  fi
+  # Clear both config and rendered state; reload solely from the saved file.
+  for key in ${!var_@} ${!_IDENTITY_@}; do unset "$key"; done
+  var_ctid=614 var_os=debian var_version=13
+  IPV6_ADDR=''
+  load_vars_file "$TEST_DIR/saved.vars" yes
+  base_settings
+  same static "$IPV6_METHOD"
+  same 614 "$CT_ID"
+  same 10.20.9.3/16 "$NET"
+  (net0_capture)
+  if [[ "$1" == save-ipv6-legacy ]]; then
+    same '' "${IPV6_ADDR:-}"
+    assert_lacks ',ip6=' "$TEST_DIR/pct-options"
+  else
+    same 2001:db8::93/64 "$IPV6_ADDR"
+    grep -q -- ',ip6=2001:db8::93/64$' "$TEST_DIR/pct-options"
+  fi
+  case "$1" in
+  save-ipv6-mac | save-ipv6-all)
+    same 02:00:00:00:06:14 "$MAC"
+    grep -q -- ',hwaddr=02:00:00:00:06:14,' "$TEST_DIR/pct-options"
+    ;;
+  esac
   ;;
 wizard | wizard-accept | wizard-id-change | wizard-clear-mac)
   static_policy
@@ -584,7 +653,7 @@ VARS
       case "$method" in
       static) grep -q -- ',ip6=2001:db8::42/64$' "$TEST_DIR/pct-options" ;;
       auto | dhcp) grep -q -- ",ip6=$method$" "$TEST_DIR/pct-options" ;;
-      none | disable) ! grep -q -- ',ip6=' "$TEST_DIR/pct-options" ;;
+      none | disable) assert_lacks ',ip6=' "$TEST_DIR/pct-options" ;;
       esac
     )
   done
@@ -635,12 +704,12 @@ wizard-back-edits | wizard-back-clear | wizard-modes | wizard-modes-static | wiz
         fi
         case "$method" in
         auto | dhcp) grep -q -- ",ip=dhcp,tag=6,ip6=$method$" "$TEST_DIR/pct-options" ;;
-        none | disable) ! grep -q -- ',ip6=' "$TEST_DIR/pct-options" ;;
+        none | disable) assert_lacks ',ip6=' "$TEST_DIR/pct-options" ;;
         esac
         ;;
       esac
       if [[ "$WIZARD_NAVIGATION" == back-clear ]]; then
-        ! grep -q -- ',hwaddr=' "$TEST_DIR/pct-options"
+        assert_lacks ',hwaddr=' "$TEST_DIR/pct-options"
       else
         grep -q -- ',hwaddr=02:00:00:00:99:03,' "$TEST_DIR/pct-options"
       fi
