@@ -17,6 +17,7 @@ _dev_step_end
 _dev_step_key
 _dev_step_start
 _dev_timing_dir
+_eh_command_is
 _eh_destroy_container
 _eh_explanation
 _eh_hint_from_log
@@ -31,6 +32,7 @@ _eh_quiet_spinner
 _eh_report
 _eh_resolve_log
 _eh_signal_exit
+_eh_tools_for
 _eh_warn
 _eh_write_debug_log
 _get_current_ip

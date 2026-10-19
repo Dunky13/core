@@ -928,6 +928,10 @@ silent() {
   # A failure the caller handled (a retry loop) must not be reported for a later, unrelated error.
   unset _SILENT_FAILED_RC _SILENT_FAILED_CMD _SILENT_FAILED_LINE _SILENT_FAILED_LOG
   local cmd="$*"
+  # apt warns about its CLI whenever stdout is not a terminal, and here it never is.
+  if [[ "${1:-}" == "apt" ]]; then
+    set -- apt -o Apt::Cmd::Disable-Script-Warning=true "${@:2}"
+  fi
   local caller_line="${BASH_LINENO[0]:-unknown}"
   local logfile="$(get_active_logfile)"
   local errinfo="${logfile}.errinfo"
@@ -1871,13 +1875,18 @@ confirm_external_installer() {
   msg_warn "If you have any doubts or concerns, please review the installer code before proceeding:"
   msg_custom "${TAB3}${GATEWAY}${BGN}${CL}" "\e[1;34m" "→  ${installer}"
   echo
+  # 254 is the user declining; 10 would read as "needs privileged mode".
   if [[ -z "$answer" ]] && ! read -r -p "${TAB3}Do you want to continue? [y/N]: " answer; then
     msg_error "No terminal to confirm on. Set var_external_installer=yes to run it unattended."
-    exit 10
+    exit 254
   fi
   if [[ ! "${answer,,}" =~ ^(y|yes|true)$ ]]; then
-    msg_error "Aborted by user. No changes have been made."
-    exit 10
+    if [[ -n "${var_external_installer:-}" ]]; then
+      msg_error "var_external_installer=${var_external_installer} declines the upstream installer, and this script has no other way to install. Set it to yes, or leave it unset to be asked."
+    else
+      msg_error "Aborted by user. No changes have been made."
+    fi
+    exit 254
   fi
 }
 
@@ -2302,7 +2311,8 @@ cs_testing_state() {
 # cleanup_lxc()
 #
 # - Cleans package manager and language caches (safe for installs AND updates)
-# - Supports Alpine (apk), Debian/Ubuntu (apt), Python, Node.js, Go, Rust, Ruby, PHP
+# - Supports Alpine (apk), Debian/Ubuntu (apt), other distros through install.func's
+#   pkg_clean, and Python, Node.js, Go, Rust, Ruby, PHP caches
 # - Uses fallback error handling to prevent cleanup failures from breaking installs
 # ------------------------------------------------------------------------------
 cleanup_lxc() {
@@ -2316,10 +2326,11 @@ cleanup_lxc() {
     # problem worth reporting.
     $STD apk cache clean 2>/dev/null || true
     rm -rf /var/cache/apk/*
-  else
+  elif command -v apt-get &>/dev/null; then
     $STD apt -y autoremove 2>/dev/null || msg_warn "apt autoremove failed (non-critical)"
-    $STD apt -y autoclean 2>/dev/null || msg_warn "apt autoclean failed (non-critical)"
     $STD apt -y clean 2>/dev/null || msg_warn "apt clean failed (non-critical)"
+  elif declare -f pkg_clean >/dev/null 2>&1; then
+    pkg_clean 2>/dev/null || msg_warn "Package cache cleanup failed (non-critical)"
   fi
 
   find /tmp /var/tmp -type f -name 'tmp*' -delete 2>/dev/null || true
@@ -2567,7 +2578,7 @@ apt_update_safe() {
 _cs_conffile_list() {
   # 2>/dev/null hides find's message about an unreadable /etc/credstore, not its
   # exit status, which pipefail then passes on as if sort had failed.
-  { find "${_CS_CONFFILE_ROOT:-/etc}" -maxdepth 6 \( -name '*.dpkg-dist' -o -name '*.dpkg-new' \) 2>/dev/null || true; } | sort
+  { find "${_CS_CONFFILE_ROOT:-/etc}" -maxdepth 6 \( -name '*.dpkg-dist' -o -name '*.dpkg-new' \) 2>/dev/null || true; } | LC_ALL=C sort
 }
 
 apt_conffile_guard() {
@@ -2591,7 +2602,7 @@ apt_conffile_report() {
   [[ -n "${_CS_CONFFILE_GUARD:-}" ]] || return 0
 
   local added
-  added="$(comm -13 <(printf '%s\n' "${_CS_CONFFILE_BASELINE:-}") <(_cs_conffile_list) 2>/dev/null)"
+  added="$(LC_ALL=C comm -13 <(printf '%s\n' "${_CS_CONFFILE_BASELINE:-}") <(_cs_conffile_list) 2>/dev/null)"
   rm -f "$_CS_CONFFILE_GUARD"
   _CS_CONFFILE_GUARD=""
   unset APT_CONFIG

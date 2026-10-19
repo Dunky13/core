@@ -33,8 +33,10 @@ on:
       - "tests/nodejs-key-refresh.sh"
       - "tests/forge-connection.sh"
       - "tests/failed-command-output.sh"
+      - "tests/exit-code-hints.sh"
       - "tests/forge-release-json.sh"
       - "tests/container-identity.sh"
+      - "tests/install-cleanup.sh"
       - ".github/workflows/verify-split-files.yml"
   push:
     branches: [main]
@@ -59,8 +61,10 @@ on:
       - "tests/nodejs-key-refresh.sh"
       - "tests/forge-connection.sh"
       - "tests/failed-command-output.sh"
+      - "tests/exit-code-hints.sh"
       - "tests/forge-release-json.sh"
       - "tests/container-identity.sh"
+      - "tests/install-cleanup.sh"
       - ".github/workflows/verify-split-files.yml"
   workflow_dispatch:
 
@@ -118,8 +122,14 @@ jobs:
       - name: Failed command output tests
         run: bash tests/failed-command-output.sh
 
+      - name: Exit code hint tests
+        run: bash tests/exit-code-hints.sh
+
       - name: Forge release lookup tests
         run: bash tests/forge-release-json.sh
+
+      - name: Install cleanup and uv trap tests
+        run: bash tests/install-cleanup.sh
 
       - name: Prefetch lists cover every engine file
         run: |
